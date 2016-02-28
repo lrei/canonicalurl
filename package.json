@@ -1,0 +1,25 @@
+{
+  "name": "canonicalurl",
+  "version": "1.0.0",
+  "description": "A microservice for unshortening URLs and retrieving the canonical version from the HTML source code",
+  "main": "server.js",
+  "dependencies": {
+    "cheerio": "^0.20.0",
+    "commander": "^2.9.0",
+    "nconf": "^0.8.4",
+    "request": "^2.69.0",
+    "tld": "^0.0.2",
+    "valid-url": "^1.0.9",
+    "winston-cluster": "^0.0.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "mocha",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "URL"
+  ],
+  "author": "Luis Rei",
+  "license": "MIT"
+}
