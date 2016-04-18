@@ -205,7 +205,7 @@ function fetchContent (u, data, reqres) {
     var og_url = parsedHtml('meta[property="og:url"]').attr('content')
     if (og_url) {
       data.url_retrieved = og_url
-      data.reason = 'opengraph'
+      data.reason = 'canonical'
       data.method = 'opengraph'
       data.canonical = true
       reply(data, reqres)
@@ -222,6 +222,7 @@ function fetchContent (u, data, reqres) {
 
 /**
  * Make HEAD Request and handle response
+ * follows all redirects up to MAXREDIRECTS
  * @param {string} url the URL to follow
  * @param {boolean} get attempt to fetch HTML and extract canonical after HEAD
  * @param {object} data the data for the eventual reply
@@ -251,6 +252,7 @@ function headRequest (u, get, data, reqres) {
     // Process HEAD Reply
     data.method = 'original'
     data.elapsed_head = elapsedMilliSecondsSince(data.elapsed)
+    var inList = false
 
     // get the status code
     data.code = res.statusCode
@@ -335,13 +337,16 @@ function headRequest (u, get, data, reqres) {
       return
     }
 
-    // 5. Check if content fetching is disabled
+    // Check if content fetching is disabled
     if (!get) {
       data.reason = 'content fetching disabled'
       reply(data, reqres)
       winston.log('debug', data.reason, data)
       return
     }
+
+    // store url in property before following and attempting to extract canon
+    data.url_head = data.url_retrieved
 
     // go get the content
     winston.log('debug', 'go fetch', data)
@@ -482,7 +487,7 @@ function startServerMaster () {
   winston.remove(winston.transports.Console)
 
   // Fork workers.
-  numCpus = nconf.get('numcpus') || os.cpus().length
+  var numCpus = nconf.get('numcpus') || os.cpus().length
 
   winston.info('Starting workers ' + numCpus)
   for (var i = 0; i < numCpus; i++) {
@@ -522,7 +527,7 @@ function startServerWorker () {
   MAXSIZE = nconf.get('maxsize')
   TIMEOUT = nconf.get('timeout')
   MAXREDIRECTS = nconf.get('maxredirects')
-  port = nconf.get('port')
+  var port = nconf.get('port')
   var doGet = !nconf.get('noget')
   var nrqs = 1 + doGet // 1 + true = 2, 1 + false = 1 (3> javascript)
   var tolerance = 5 // tolerance in seconds
