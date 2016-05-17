@@ -1,0 +1,11 @@
+# possibly confidential whitelist.txt
+whitelist.txt
+
+# log files
+*.log
+
+# development configuration file (if exists)
+devconfig.json
+
+# npm dependecy dir
+node_modules

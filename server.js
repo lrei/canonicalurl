@@ -46,7 +46,7 @@ var UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; ' +
 function elapsedMilliSecondsSince (start) {
   var end = process.hrtime() // get the current time
 
-  // calculate elased seconds and convert to nanoseconds
+  // calculate elapsed seconds and convert to nanoseconds
   var ns = Math.abs(end[0] - start[0]) * 1e9
 
   // calculate total elapsed nanoseconds
@@ -126,9 +126,9 @@ function checkDomainLists (d) {
  * @param {object} data an object containing the data we'll send as reply
  * @param {object} reqres the http response related to the client request
  */
-function fetchContent (u, data, reqres) {
+function fetchContent (u, data, reqres, j) {
   // set up cookie jar
-  var j = request.jar()
+  j = j || request.jar()
   var r = request.defaults({jar: j})
 
   data.get_attempt = true
@@ -229,7 +229,10 @@ function fetchContent (u, data, reqres) {
  * @param {object} reqres the http response related to the client request
  */
 function headRequest (u, get, data, reqres) {
-  request({
+  // set up cookie jar
+  var j = request.jar()
+  var r = request.defaults({jar: j})
+  r({
     url: u,
     method: 'HEAD',
     headers: {
@@ -241,10 +244,10 @@ function headRequest (u, get, data, reqres) {
     time: true
   }, (err, res, b) => {
     if (err) {
-      data.reason = err
+      data.reason = 'HEAD error (possibly timeout or max redirects exceeded)'
       // No valid HEAD reply
       reply(data, reqres)
-      winston.log('debug', 'HEAD error', {url: u})
+      winston.log('debug', 'HEAD error', {url: u, res: res, err: err})
       return
     }
     winston.log('debug', 'HEAD reply received', {url: u})
@@ -350,7 +353,7 @@ function headRequest (u, get, data, reqres) {
 
     // go get the content
     winston.log('debug', 'go fetch', data)
-    fetchContent(data.url_retrieved, data, reqres)
+    fetchContent(data.url_retrieved, data, reqres, j)
     return
   })
 }
@@ -380,6 +383,7 @@ function fetchCanonical (u, get, reqres) {
     reply(data, reqres)
     return
   }
+  winston.log('debug', 'url is valid', u)
 
   // Check domain lists
   // extract the top level domain (tld) e.g. 'bbc.co.uk' from the url
@@ -395,6 +399,7 @@ function fetchCanonical (u, get, reqres) {
     reply(data, reqres)
     return
   }
+  winston.log('debug', 'domain is in short/whitelist', u)
 
   headRequest(u, get, data, reqres)
 }
@@ -529,10 +534,22 @@ function startServerWorker () {
   MAXREDIRECTS = nconf.get('maxredirects')
   var port = nconf.get('port')
   var doGet = !nconf.get('noget')
-  var nrqs = 1 + doGet // 1 + true = 2, 1 + false = 1 (3> javascript)
+  var nrqs = 1 + doGet // 1 + true = 2, 1 + false = 1 (<3 javascript)
   var tolerance = 5 // tolerance in seconds
   tolerance = tolerance * 1000 // tolerance in ms
   var serverOut = TIMEOUT * MAXREDIRECTS * nrqs + tolerance
+
+  // Log configuration
+  var confLog = {
+    port: port,
+    maxsize: MAXSIZE,
+    maxredirects: MAXREDIRECTS,
+    timeout: TIMEOUT,
+    get: doGet,
+    tolerance: tolerance,
+    serverOut: serverOut
+  }
+  winston.log('verbose', 'Configuration', confLog)
 
   // Load Filter Lists
   loadFilterLists()
@@ -550,7 +567,7 @@ function startServerWorker () {
     // request closed unexpectedly
     req.on('close', function () {
       var reqdata = {
-        elaspsed: elapsedMilliSecondsSince(start),
+        elapsed: elapsedMilliSecondsSince(start),
         url: u
       }
       winston.log('warn', 'connection closed unexpectedly', reqdata)
@@ -571,10 +588,15 @@ function startServer () {
   var numCpus = os.cpus().length
   var port = 7171 // default port
 
+  /**
+   * nconf used to include
+   * but this seemed to cause issues
+   */
   nconf.argv()
     .env({'match': /^CANONICALURL_/, 'separator': '__'})
-    .file({ file: '/etc/canonicalurl/config.json' })
-    .file({ file: './canonicalurl.json' })
+    .file('devconf', './devconfig.json')
+    .file('masterconf', '/etc/canonicalurl/config.json')
+    .file('localconf', './canonicalurl.json')
     .defaults({
       'port': port,
       'numcpus': numCpus,
@@ -588,6 +610,7 @@ function startServer () {
       'rotate': false,
       'noget': false
     })
+
   winston.level = nconf.get('loglevel')
 
   // Set MaxListeners
@@ -617,7 +640,6 @@ function cli () {
     .option('--log <path>', 'Location of the log file to use')
     .option('--loglevel <value>', 'Log level e.g. "info"')
     .option('--logrotate', 'Logs by day')
-    .option('--config <path>', 'Use specified configuration file')
     .parse(process.argv)
 }
 
